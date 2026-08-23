@@ -49,13 +49,21 @@ Do **not** rebuild from scratch just because a fresh empty local folder is missi
 - `tests_newton/test_newton_core.py`
   - unit tests for perception / fitting / CLI
 
-## Explicitly NOT implemented yet
+## Exit codes (`run_pipeline.py`)
 
-- SAM2 tracking
-- Hybrid motion spotter (optical flow / background subtraction)
-- VLM intuition
-- LLM Top-3 hypothesis generation
-- Genesis / GenesisLego imagination loop
+| Code | Meaning |
+|---|---|
+| 0 | Gate passed (`accepted` present) |
+| 1 | Invalid input / expected runtime error |
+| 2 | Missing CSV file |
+| 3 | Gate failed (`should_fallback_to_discovery=true`) |
+
+## Result field names
+
+- `best_candidate`: best ranked successful fit (may fail gate)
+- `accepted` / `winner_passed`: gate-passing formula (use this for success)
+- `winner`: legacy alias of `best_candidate` (do **not** treat as gate success)
+
 
 ## Quick start
 

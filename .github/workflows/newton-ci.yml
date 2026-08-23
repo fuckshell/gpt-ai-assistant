@@ -1,0 +1,51 @@
+name: newton-ci
+
+on:
+  push:
+    paths:
+      - "modules/**"
+      - "tests_newton/**"
+      - "data/samples/**"
+      - "physics_formulas.json"
+      - "config.py"
+      - "run_pipeline.py"
+      - "newton_fitting_demo.py"
+      - "requirements-newton.txt"
+      - ".github/workflows/newton-ci.yml"
+  pull_request:
+    paths:
+      - "modules/**"
+      - "tests_newton/**"
+      - "data/samples/**"
+      - "physics_formulas.json"
+      - "config.py"
+      - "run_pipeline.py"
+      - "newton_fitting_demo.py"
+      - "requirements-newton.txt"
+      - ".github/workflows/newton-ci.yml"
+
+jobs:
+  newton-core:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install Newton core deps
+        run: python -m pip install -r requirements-newton.txt
+      - name: Unit tests
+        run: python -m unittest tests_newton/test_newton_core.py -v
+      - name: CLI smoke (meters CSV)
+        run: python run_pipeline.py --csv data/samples/uniform_accel_meters.csv --test-mse-threshold 0.01
+      - name: CLI smoke from other cwd
+        run: |
+          mkdir -p /tmp/newton-cwd-test
+          python "$GITHUB_WORKSPACE/run_pipeline.py" \
+            --csv "$GITHUB_WORKSPACE/data/samples/uniform_accel_meters.csv" \
+            --test-mse-threshold 0.01
+        working-directory: /tmp/newton-cwd-test

@@ -4,10 +4,11 @@
 Does NOT claim SAM2 / VLM / LLM / Genesis are implemented.
 It only wires the existing perception + formula registry + fitting core.
 
-Examples:
-  python3 run_pipeline.py --csv data/samples/uniform_accel_meters.csv
-  python3 run_pipeline.py --csv data/samples/uniform_accel_pixels.csv --pixels-per-meter 500
-  python3 run_pipeline.py --csv path/to/traj.csv --candidates uniform_acceleration,uniform_linear_motion
+Exit codes:
+  0  gate passed (accepted formula exists)
+  1  invalid input / expected runtime error
+  2  missing CSV file
+  3  gate failed (should_fallback_to_discovery)
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ import csv
 import json
 import sys
 from pathlib import Path
-from typing import List, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 import config
 from modules.fitting import fit_and_select, split_train_test_time_series
@@ -25,11 +26,22 @@ from modules.formula_registry import (
     build_candidate_formulas,
     flatten_formula_catalog,
     load_formula_catalog,
+    validate_formula_catalog,
 )
+from modules.json_util import json_safe
 from modules.perception import convert_pixel_csv_to_meter_csv
 
+REPO_ROOT = Path(__file__).resolve().parent
+DEFAULT_FORMULAS = REPO_ROOT / "physics_formulas.json"
 
-def _read_meter_csv(path: Path) -> Tuple[List[float], List[float], List[float]]:
+INPUT_ERRORS = (ValueError, FileNotFoundError, OSError, KeyError, TypeError)
+
+
+def _read_meter_csv(
+    path: Path,
+    *,
+    require_y: bool = False,
+) -> Tuple[List[float], List[float], Optional[List[float]]]:
     times: List[float] = []
     xs: List[float] = []
     ys: List[float] = []
@@ -51,13 +63,18 @@ def _read_meter_csv(path: Path) -> Tuple[List[float], List[float], List[float]]:
                 "CSV must contain 'x_meter' (preferred) or 'x'. "
                 "For pixel CSVs, pass --pixels-per-meter."
             )
+        if require_y and y_key is None:
+            raise ValueError(
+                "--axis y requires a y/y_meter column; CSV has no y values"
+            )
         for row in reader:
             times.append(float(row["time"]))
             xs.append(float(row[x_key]))
-            ys.append(float(row[y_key]) if y_key else 0.0)
+            if y_key is not None:
+                ys.append(float(row[y_key]))
     if len(times) < 6:
         raise ValueError(f"Need at least 6 rows, got {len(times)}")
-    return times, xs, ys
+    return times, xs, (ys if ys else None)
 
 
 def _resolve_input_csv(
@@ -94,6 +111,19 @@ def _default_candidate_ids(catalog: Sequence[dict]) -> List[str]:
     return [item["id"] for item in catalog]
 
 
+def _resolve_formulas_path(path_text: str) -> Path:
+    path = Path(path_text)
+    if path.is_absolute():
+        return path
+    # Prefer path relative to current working directory if it exists; otherwise
+    # fall back to repository root (script location). This keeps out-of-tree
+    # invocations working with the default catalog name.
+    cwd_candidate = Path.cwd() / path
+    if cwd_candidate.exists():
+        return cwd_candidate
+    return REPO_ROOT / path
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Newton MVP: CSV trajectory -> formula fit + extrapolation gate"
@@ -119,8 +149,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--formulas",
-        default="physics_formulas.json",
-        help="Path to formula catalog JSON",
+        default=str(DEFAULT_FORMULAS),
+        help="Path to formula catalog JSON (default: repo physics_formulas.json)",
     )
     parser.add_argument(
         "--candidates",
@@ -167,8 +197,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             pixels_per_meter=args.pixels_per_meter,
             converted_out=args.converted_csv,
         )
-        times, xs, ys = _read_meter_csv(meter_csv)
-        positions = xs if args.axis == "x" else ys
+        times, xs, ys = _read_meter_csv(meter_csv, require_y=(args.axis == "y"))
+        if args.axis == "y":
+            assert ys is not None
+            positions = ys
+        else:
+            positions = xs
 
         t_train, x_train, t_test, x_test = split_train_test_time_series(
             t_data=times,
@@ -176,13 +210,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             split_ratio=args.split_ratio,
         )
 
-        catalog = flatten_formula_catalog(load_formula_catalog(args.formulas))
+        formulas_path = _resolve_formulas_path(args.formulas)
+        catalog = flatten_formula_catalog(load_formula_catalog(formulas_path))
+        validate_formula_catalog(catalog)
         if args.candidates:
             candidate_ids = [item.strip() for item in args.candidates.split(",") if item.strip()]
         else:
             candidate_ids = _default_candidate_ids(catalog)
 
-        candidates = build_candidate_formulas(catalog, candidate_ids)
+        candidates = build_candidate_formulas(
+            catalog, candidate_ids, strict_unknown=True
+        )
         if not candidates:
             raise ValueError(f"No candidates resolved from: {candidate_ids}")
 
@@ -198,11 +236,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         result["meta"] = {
             "input_csv": str(csv_path),
             "meter_csv": str(meter_csv),
+            "formulas_path": str(formulas_path),
             "axis": args.axis,
             "n_points": len(times),
             "n_train": len(t_train),
             "n_test": len(t_test),
             "candidate_ids": candidate_ids,
+            "exit_codes": {
+                "0": "gate passed",
+                "1": "invalid input / expected runtime error",
+                "2": "missing CSV",
+                "3": "gate failed",
+            },
             "not_implemented": [
                 "SAM2 tracking",
                 "VLM intuition",
@@ -210,11 +255,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "Genesis imagination",
             ],
         }
-    except Exception as exc:
+    except INPUT_ERRORS as exc:
         print(f"[error] {exc}", file=sys.stderr)
         return 1
 
-    text = json.dumps(result, indent=2)
+    payload = json_safe(result)
+    text = json.dumps(payload, indent=2, allow_nan=False)
     print(text)
     if args.output_json:
         args.output_json.parent.mkdir(parents=True, exist_ok=True)
@@ -228,7 +274,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 3
 
-    accepted = result.get("accepted") or {}
+    accepted = result.get("accepted") or result.get("winner_passed") or {}
     print(
         f"[gate] PASS: accepted={accepted.get('formula_id')} "
         f"test_mse={accepted.get('mse_test')}",

@@ -1,0 +1,3 @@
+# Optional symbolic discovery stack (not required for core CSV fit CLI).
+-r requirements-newton.txt
+pysr>=0.18,<2

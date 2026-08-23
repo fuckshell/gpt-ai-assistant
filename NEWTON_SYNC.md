@@ -40,7 +40,18 @@ python3 -m unittest tests_newton/test_newton_core.py -v
 python3 run_pipeline.py --csv data/samples/uniform_accel_meters.csv
 ```
 
-## Policy while recovering
+## P0 runtime fixes landed on this branch
 
-Restore and maintain the existing Newton **core interfaces**.  
-Do not invent SAM2 / LLM / Genesis as completed work.
+Addressed from the takeover audit (code-side only):
+
+- repo-absolute default formulas path / cwd-safe CLI
+- strict JSON (`Infinity`/`NaN` -> `null`, `allow_nan=False`)
+- monotonic finite time/series validation
+- unknown candidate IDs hard-fail
+- `--axis y` requires real y column
+- SHM/damped multi-start seeds (FFT/peak inspired)
+- ranking prioritizes Test MSE over AICc
+- discovery free-dimension constants + valid-only `best`
+- Newton CI workflow (path-filtered; does not fix Vercel LINE check)
+- `pysr` moved to optional `requirements-newton-discovery.txt`
+

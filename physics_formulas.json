@@ -47,16 +47,17 @@
     {
       "id": "damped_oscillation",
       "name": "Damped Oscillation",
-      "description": "Oscillation with exponentially decaying amplitude.",
-      "formula_str": "x(t) = A * exp(-beta * t) * cos(omega * t + phi)",
-      "scipy_func_code": "lambda t, A, beta, omega, phi: A * np.exp(-beta * t) * np.cos(omega * t + phi)",
-      "complexity_penalty": 5,
-      "params": ["A", "beta", "omega", "phi"],
+      "description": "Oscillation with exponentially decaying amplitude around an equilibrium offset.",
+      "formula_str": "x(t) = A * exp(-beta * t) * cos(omega * t + phi) + offset",
+      "scipy_func_code": "lambda t, A, beta, omega, phi, offset: A * np.exp(-beta * t) * np.cos(omega * t + phi) + offset",
+      "complexity_penalty": 6,
+      "params": ["A", "beta", "omega", "phi", "offset"],
       "bounds": {
         "A": [0.0, 1000.0],
         "beta": [0.0, 20.0],
         "omega": [0.01, 50.0],
-        "phi": [-3.1415926535, 3.1415926535]
+        "phi": [-3.1415926535, 3.1415926535],
+        "offset": [-1000.0, 1000.0]
       }
     }
   ]
