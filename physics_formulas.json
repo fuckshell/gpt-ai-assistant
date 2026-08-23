@@ -1,0 +1,65 @@
+{
+  "kinematics": [
+    {
+      "id": "uniform_linear_motion",
+      "name": "Uniform Linear Motion",
+      "description": "Object moves with a constant velocity.",
+      "formula_str": "x(t) = v * t + x0",
+      "scipy_func_code": "lambda t, v, x0: v * t + x0",
+      "complexity_penalty": 2,
+      "params": ["v", "x0"],
+      "bounds": {
+        "v": [-100.0, 100.0],
+        "x0": [-1000.0, 1000.0]
+      }
+    },
+    {
+      "id": "uniform_acceleration",
+      "name": "Uniform Acceleration",
+      "description": "Object moves with constant acceleration.",
+      "formula_str": "x(t) = 0.5 * a * t**2 + v0 * t + x0",
+      "scipy_func_code": "lambda t, a, v0, x0: 0.5 * a * t**2 + v0 * t + x0",
+      "complexity_penalty": 3,
+      "params": ["a", "v0", "x0"],
+      "bounds": {
+        "a": [-50.0, 50.0],
+        "v0": [-100.0, 100.0],
+        "x0": [-1000.0, 1000.0]
+      }
+    }
+  ],
+  "dynamics": [
+    {
+      "id": "simple_harmonic_motion",
+      "name": "Simple Harmonic Motion",
+      "description": "Periodic oscillation around equilibrium.",
+      "formula_str": "x(t) = A * cos(omega * t + phi) + offset",
+      "scipy_func_code": "lambda t, A, omega, phi, offset: A * np.cos(omega * t + phi) + offset",
+      "complexity_penalty": 4,
+      "params": ["A", "omega", "phi", "offset"],
+      "bounds": {
+        "A": [0.0, 1000.0],
+        "omega": [0.01, 50.0],
+        "phi": [-3.1415926535, 3.1415926535],
+        "offset": [-1000.0, 1000.0]
+      }
+    },
+    {
+      "id": "damped_oscillation",
+      "name": "Damped Oscillation",
+      "description": "Oscillation with exponentially decaying amplitude around an equilibrium offset.",
+      "formula_str": "x(t) = A * exp(-beta * t) * cos(omega * t + phi) + offset",
+      "scipy_func_code": "lambda t, A, beta, omega, phi, offset: A * np.exp(-beta * t) * np.cos(omega * t + phi) + offset",
+      "complexity_penalty": 6,
+      "params": ["A", "beta", "omega", "phi", "offset"],
+      "bounds": {
+        "A": [0.0, 1000.0],
+        "beta": [0.0, 20.0],
+        "omega": [0.01, 50.0],
+        "phi": [-3.1415926535, 3.1415926535],
+        "offset": [-1000.0, 1000.0]
+      }
+    }
+  ]
+}
+
