@@ -8,7 +8,7 @@ from typing import Dict, Iterable, List, Sequence, Tuple
 import numpy as np
 from scipy.optimize import curve_fit
 
-from config import AIC_WEIGHT
+from config import AIC_WEIGHT, TEST_MSE_THRESHOLD
 from modules.formula_registry import FORMULA_FUNCTIONS, FormulaFn
 
 EPS = 1e-12
@@ -24,6 +24,7 @@ class FitResult:
     aic: float
     aicc: float
     score: float
+    passed: bool = False
     message: str = ""
 
     def to_dict(self) -> dict:
@@ -116,6 +117,7 @@ def fit_single_formula(
             aic=float("inf"),
             aicc=float("inf"),
             score=float("inf"),
+            passed=False,
             message=f"Unknown formula id '{formula_id}'",
         )
 
@@ -141,6 +143,7 @@ def fit_single_formula(
             aic=float("inf"),
             aicc=float("inf"),
             score=float("inf"),
+            passed=False,
             message=f"curve_fit failed: {exc}",
         )
 
@@ -151,6 +154,7 @@ def fit_single_formula(
     aic = compute_aic(mse_train=mse_train, sample_size=t_train.size, num_params=num_params)
     aicc = compute_aicc(aic=aic, sample_size=t_train.size, num_params=num_params)
     params = {name: float(value) for name, value in zip(param_names, popt)}
+    passed = bool(np.isfinite(mse_test) and mse_test <= TEST_MSE_THRESHOLD)
 
     return FitResult(
         formula_id=formula_id,
@@ -161,6 +165,8 @@ def fit_single_formula(
         aic=aic,
         aicc=aicc,
         score=float("inf"),
+        passed=passed,
+        message="" if passed else f"Test MSE {mse_test:.6g} exceeds threshold {TEST_MSE_THRESHOLD}",
     )
 
 
@@ -205,6 +211,7 @@ def fit_and_select(
     x_test: Sequence[float],
     formula_functions: Dict[str, FormulaFn] | None = None,
     aic_weight: float = AIC_WEIGHT,
+    test_mse_threshold: float = TEST_MSE_THRESHOLD,
     maxfev: int = 20000,
 ) -> dict:
     if not candidate_formulas:
@@ -235,11 +242,30 @@ def fit_and_select(
         for formula in candidate_formulas
     ]
 
+    # Re-apply threshold so callers can override config at select-time.
+    for result in raw_results:
+        if result.success:
+            result.passed = bool(
+                np.isfinite(result.mse_test) and result.mse_test <= test_mse_threshold
+            )
+            if result.passed:
+                result.message = ""
+            else:
+                result.message = (
+                    f"Test MSE {result.mse_test:.6g} exceeds threshold {test_mse_threshold}"
+                )
+
     ranked = rank_results(raw_results, aic_weight=aic_weight)
     winner = next((item for item in ranked if item.success), None)
+    accepted = next((item for item in ranked if item.success and item.passed), None)
+    gate_failed = accepted is None
 
     return {
         "winner": winner.to_dict() if winner else None,
+        "accepted": accepted.to_dict() if accepted else None,
+        "gate_failed": gate_failed,
+        "should_fallback_to_discovery": gate_failed,
+        "test_mse_threshold": float(test_mse_threshold),
         "ranked_results": [item.to_dict() for item in ranked],
     }
 
